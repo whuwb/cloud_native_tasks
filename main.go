@@ -1,42 +1,44 @@
 package main
 
 import (
+	"CloudNative/utils"
 	"fmt"
+	"io"
+	"log"
+	"net/http"
 	"time"
 )
 
 func main() {
-	messages := make(chan int, 10)
-	done := make(chan bool)
+	http.HandleFunc("/healthz", healthz)
+	http.HandleFunc("/header", getHeader)
 
-	defer close(messages)
+	err := http.ListenAndServe(":80", nil)
 
-	// consumer
-	go func() {
-		ticker := time.NewTicker(time.Second)
-
-		for _ = range ticker.C {
-			select {
-			case <-done:
-				println("child process interrupt...")
-				return
-
-			default:
-				fmt.Printf("receive message: %d\n", <-messages)
-			}
-		}
-	}()
-
-	for i := 0; i < 20; i++ {
-		messages <- i
-		fmt.Printf("Putting %d\n", i)
-		time.Sleep(time.Second / 2)
+	if err != nil {
+		log.Fatal(err)
 	}
-
-	time.Sleep(2 * time.Second)
-	close(done)
-	time.Sleep(time.Second)
-	println("main exit")
 }
 
+func healthz(w http.ResponseWriter, r *http.Request) {
+	io.WriteString(w, "ok")
+}
 
+func getHeader(w http.ResponseWriter, r *http.Request) {
+	utils.UpdateHeader(w.Header(), r.Header)
+
+	version := utils.GetVersion("default")
+	w.Header().Add("VERSION", version)
+
+	_, err := io.WriteString(w, "header updated with version: "+version)
+
+	if err != nil {
+		fmt.Printf("[Error]io write: %v", err)
+	}
+
+	trace("header", r)
+}
+
+func trace(url string, r *http.Request) {
+	fmt.Printf("[tracing] %s visit %s at %s", r.RemoteAddr, url, time.Now())
+}
